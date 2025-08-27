@@ -19,7 +19,7 @@ git clone https://github.com/linhanwang/SCCNet.git
 
 ### Data Preparation
 
-Download remote_sensing.tar.gz from [here](https://drive.google.com/drive/folders/1-URr9fX0v6_-Yo3B7St8UFNHiPWpXxnC?usp=sharing), unzip and put it under your directory 'SCCNet'.
+Download remote_sensing.tar.gz from [huggingface](https://huggingface.co/datasets/LinhanWang/SCCNet/tree/main), unzip and put it under your directory 'SCCNet'.
 
 
 ### Train
