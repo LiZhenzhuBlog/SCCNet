@@ -36,7 +36,7 @@ The log and checkpoints are stored under directory 'logs'.
 python test.py --datapath './remote_sensing/iSAID_patches' --img_size 256 --backbone resnet50 --fold 0 --benchmark isaid --bsz 64 --nshot 1 --load './logs/exp_name/best_model.pt'
 ```
 
-We provide a pretrained-model for the above setting. You can download it from [here](https://drive.google.com/drive/folders/1IU3m_0qTgIzmz6mc_0J1b-dMGBZMnelg?usp=drive_link).
+~~We provide a pretrained-model for the above setting. You can download it from [here](https://drive.google.com/drive/folders/1IU3m_0qTgIzmz6mc_0J1b-dMGBZMnelg?usp=drive_link).~~ Apologies. The pretrained model was lost during the data migration.
 
 The fusion process is implemented in test.py, you can turn it on in test.sh. You can turn it on by setting fuse=True. The option eigen_path is used to indicate the directory of eigen vectors. The process to generate eigen vectors is described in [spectral](spectral/README.md).
 
