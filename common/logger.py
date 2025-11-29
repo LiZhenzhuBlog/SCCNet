@@ -3,7 +3,14 @@ import datetime
 import logging
 import os
 
-from tensorboardX import SummaryWriter
+try:
+    from tensorboardX import SummaryWriter
+except Exception:
+    try:
+        from torch.utils.tensorboard import SummaryWriter
+    except Exception:
+        SummaryWriter = None
+        
 import torch
 
 
