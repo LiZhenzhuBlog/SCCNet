@@ -89,29 +89,51 @@ class SCCNetwork(nn.Module):
         return features
 
     def predict_mask_nshot(self, batch, nshot):
-
-        # Perform multiple prediction given (nshot) number of different support sets
-        logit_mask_agg = 0
-        for s_idx in range(nshot):
-            logit_mask, _ = self(batch['query_img'], batch['support_imgs'][:, s_idx], batch['support_masks'][:, s_idx])
-
-            if self.use_original_imgsize:
-                org_qry_imsize = tuple([batch['org_query_imsize'][1].item(), batch['org_query_imsize'][0].item()])
-                logit_mask = F.interpolate(logit_mask, org_qry_imsize, mode='bilinear', align_corners=True)
-
-            logit_mask_agg += logit_mask.argmax(dim=1).clone()
-            if nshot == 1: return logit_mask_agg
-
-        # Average & quantize predictions given threshold (=0.5)
-        bsz = logit_mask_agg.size(0)
-        max_vote = logit_mask_agg.view(bsz, -1).max(dim=1)[0]
-        max_vote = torch.stack([max_vote, torch.ones_like(max_vote).long()])
-        max_vote = max_vote.max(dim=0)[0].view(bsz, 1, 1)
-        pred_mask = logit_mask_agg.float() / max_vote
-        threshold = 0.4
-        pred_mask[pred_mask < threshold] = 0
-        pred_mask[pred_mask >= threshold] = 1
-
+    
+        # 初始化聚合张量为 Softmax 概率 (浮点数)
+        # 我们将聚合 Softmax 后的前景概率 (通道 1)
+        
+        # 临时变量，用于存储第一个 Softmax 结果的大小，以便初始化 agg
+        with torch.no_grad():
+            logit_mask, _ = self(batch['query_img'], batch['support_imgs'][:, 0], batch['support_masks'][:, 0])
+            # 使用 Softmax 获取前景概率
+            probs = F.softmax(logit_mask, dim=1)[:, 1, ...].clone() # [B, H, W]
+        
+        # 初始化聚合 Softmax 概率 (只聚合前景通道)
+        # logit_mask_agg 现在存储的是前景概率的总和
+        prob_mask_agg = probs
+        
+        if nshot > 1:
+            # Loop over remaining shots
+            for s_idx in range(1, nshot): # 从 1 开始循环
+                with torch.no_grad():
+                    logit_mask, _ = self(batch['query_img'], batch['support_imgs'][:, s_idx], batch['support_masks'][:, s_idx])
+                    probs = F.softmax(logit_mask, dim=1)[:, 1, ...].clone() # [B, H, W]
+                
+                prob_mask_agg += probs # 聚合 Softmax 概率
+                
+        # ---------------- 最终量化 ----------------
+        
+        # 1. 计算平均 Softmax 概率
+        # pred_mask 是平均概率 [B, H, W]
+        pred_mask = prob_mask_agg / nshot 
+        
+        # 2. Rescale to Original Size (如果需要)
+        if self.use_original_imgsize:
+            # 注意: pred_mask 现在是 [B, H, W]，需要 unsqueeze(1) 才能用 F.interpolate
+            org_qry_imsize = tuple([batch['org_query_imsize'][1].item(), batch['org_query_imsize'][0].item()])
+            pred_mask = F.interpolate(
+                pred_mask.unsqueeze(1), 
+                org_qry_imsize, 
+                mode='bilinear', 
+                align_corners=True
+            ).squeeze(1) # 恢复到 [B, H, W]
+        
+        # 3. 硬性二值化 (使用 0.5 作为标准阈值)
+        # 移除 0.4 的硬性阈值，使用更标准的 0.5
+        threshold = 0.5 
+        pred_mask = (pred_mask >= threshold).long()
+    
         return pred_mask
 
     def compute_objective(self, logit_mask, gt_mask):
