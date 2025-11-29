@@ -10,7 +10,7 @@ except Exception:
         from torch.utils.tensorboard import SummaryWriter
     except Exception:
         SummaryWriter = None
-        
+
 import torch
 
 
@@ -86,16 +86,38 @@ class Logger:
     r""" Writes evaluation results of training/testing """
     @classmethod
     def initialize(cls, args, training):
+        # Accept dict or namespace for args
+        from types import SimpleNamespace
+        if isinstance(args, dict):
+            args = SimpleNamespace(**args)
+
+        # Provide some safe defaults if missing
+        if not hasattr(args, 'logpath'):
+            args.logpath = ''
+        if not hasattr(args, 'load'):
+            args.load = ''
+        if not hasattr(args, 'benchmark'):
+            args.benchmark = 'pascal'
+
+        # build log name
         logtime = datetime.datetime.now().__format__('_%m%d_%H%M%S')
-        logpath = args.logpath if training else '_TEST_' + args.load.split('/')[-2].split('.')[0] + logtime
-        if logpath == '': logpath = logtime
+        if training:
+            logname = args.logpath if args.logpath else logtime
+        else:
+            # safe guard for args.load possibly empty or not a path-like string
+            try:
+                load_part = args.load.split('/')[-2].split('.')[0]
+                logname = '_TEST_' + load_part + logtime
+            except Exception:
+                logname = '_TEST_' + logtime
 
-        cls.logpath = os.path.join('logs', logpath + '.log')
-        cls.benchmark = args.benchmark
-        os.makedirs(cls.logpath)
+        # create directory under logs/
+        cls.logdir = os.path.join('logs', logname)
+        os.makedirs(cls.logdir, exist_ok=True)
 
+        # configure python logging to write to file inside that dir
         logging.basicConfig(filemode='w',
-                            filename=os.path.join(cls.logpath, 'log.txt'),
+                            filename=os.path.join(cls.logdir, 'log.txt'),
                             level=logging.INFO,
                             format='%(message)s',
                             datefmt='%m-%d %H:%M:%S')
@@ -107,13 +129,28 @@ class Logger:
         console.setFormatter(formatter)
         logging.getLogger('').addHandler(console)
 
-        # Tensorboard writer
-        cls.tbd_writer = SummaryWriter(os.path.join(cls.logpath, 'tbd/runs'))
+        # Tensorboard writer (safe fallback if not available)
+        try:
+            if SummaryWriter is not None:
+                cls.tbd_writer = SummaryWriter(os.path.join(cls.logdir, 'tbd', 'runs'))
+            else:
+                cls.tbd_writer = None
+        except Exception:
+            cls.tbd_writer = None
 
-        # Log arguments
+        # store benchmark and logpath for other methods
+        cls.benchmark = args.benchmark
+        cls.logpath = cls.logdir  # keep backward-compatible attribute name
+
+        # Log arguments (handle namespace or dict)
         logging.info('\n:=========== Few-shot Seg. with HSNet ===========')
-        for arg_key in args.__dict__:
-            logging.info('| %20s: %-24s' % (arg_key, str(args.__dict__[arg_key])))
+        if hasattr(args, '__dict__'):
+            items = args.__dict__.items()
+        else:
+            # fallback: iterate attributes
+            items = [(k, getattr(args, k)) for k in dir(args) if not k.startswith('_')]
+        for arg_key, arg_val in items:
+            logging.info('| %20s: %-24s' % (str(arg_key), str(arg_val)))
         logging.info(':================================================\n')
 
     @classmethod
@@ -141,4 +178,3 @@ class Logger:
         Logger.info('Backbone # param.: %d' % backbone_param)
         Logger.info('Learnable # param.: %d' % learner_param)
         Logger.info('Total # param.: %d' % (backbone_param + learner_param))
-
